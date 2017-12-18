@@ -1,5 +1,5 @@
 # alarm
-Alarm home system
+Alarm home system (this is example)
 
 # Hardware
 SIM800L and Arduino Nano
