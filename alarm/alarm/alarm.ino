@@ -35,7 +35,7 @@
 #define DEFAULT_TIMEOUT 5                       /* Timeout for waiting a response in sec    */
 #define DEFAULT_DELAY_PLAY_TRACK 2              /* Default delay after play track in sec   */
 
-/* Files of voices on SIM800 memory */
+/* Voice files in SIM800 memory and command string into PROGMEM */
 const char msg0[] PROGMEM = "AT+CREC=4,\"C:\\User\\1.amr\",0,80";
 const char msg1[] PROGMEM = "AT+CREC=4,\"C:\\User\\2.amr\",0,80";
 const char msg2[] PROGMEM = "AT+CREC=4,\"C:\\User\\3.amr\",0,80";
