@@ -125,8 +125,8 @@ void sim800PlayTrack(_track track) {
   delay(DEFAULT_DELAY_PLAY_TRACK*1000);
 }
 
-void sim800StopPlay(unsigned int t) {
-  sim800WriteCmd("AT+CREC=5", t);
+void sim800StopPlay() {
+  sim800WriteCmd("AT+CREC=5", 0);
 }
 
 void sim800SendSMS(String phone, String message)

@@ -1,6 +1,5 @@
-
 /*
- * This is an example
+ * This is example
  */
 
 #include <SoftwareSerial.h>
@@ -150,7 +149,7 @@ void loop() {
             _response.trim();                                       
             if (_response.endsWith("OK")) {                         
               if (!deleteReadSMS) deleteReadSMS = true;             /* Up flag for delete read SMS  */
-              sim800SetReadSMS(msgIndex);
+              sim800SetReadSMS(msgIndex);                           /* Set SMS is read              */
               sim800ParseSMS(_response);                            /* Parse text SMS               */      
               break;
             } else {
@@ -180,7 +179,7 @@ void loop() {
       _response.trim();
       Serial.println(_response);
 
-      /* Found USSD answer */
+      /* Detected USSD answer */
       if (_response.startsWith("+CUSD:")) {
           if (_response.indexOf("\"") > -1) {
             String msgBalance = _response.substring(_response.indexOf("\"") + 1);
@@ -193,7 +192,7 @@ void loop() {
           }
       }      
 
-      /* Detected an incoming call */
+      /* Detected incoming call */
       if (_response.startsWith("RING")) {
         CallID = "";
         int phoneindex = _response.indexOf("+CLIP: \"");
@@ -214,7 +213,7 @@ void loop() {
         if (firstCall) {
 
           delay(1000);
-          sim800StopPlay(0);
+          sim800StopPlay();
           sim800PlayTrack(ENTER_PASSWORD);
 
           if (enterPassword(enterPasswordPeriod)) {
@@ -223,7 +222,7 @@ void loop() {
             saveConfig();
             firstCall = false;
             Serial.println(F("Activation sent in SMS"));
-            sim800StopPlay(0);
+            sim800StopPlay();
             sim800PlayTrack(ACTIVATION_SENT);
             delay(2000);
             sim800HangUp();
@@ -243,7 +242,7 @@ void loop() {
           /* If number of incoming call not present in whitelist, then enter guest password */
           if (checkGuestPassword()) {
             guestSession = true;
-            sim800StopPlay(0);
+            sim800StopPlay();
             sim800PlayTrack(WELCOME);
           } else {
             sim800HangUp();
@@ -255,7 +254,7 @@ void loop() {
         String atCmd;
         dtmfCmd = "";
         delay(1000);
-        sim800StopPlay(0);
+        sim800StopPlay();
 
         /* Reading DTMF of code */
         while (1) {
@@ -309,29 +308,29 @@ void loop() {
               Serial.print(F("Check command \"")); Serial.print(CMD1); Serial.println(F("\""));
               if (!alarmOn) {
                 alarmOn = true;
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_EXECUTED);
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(ALARM_ON);
               } else {
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_NOT_EXECUTED);
               }
             } else if (dtmfCmd == CMD0) {
               Serial.print(F("Check command \"")); Serial.print(CMD0); Serial.println(F("\""));
               if (alarmOn) {
                 alarmOn = false;
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_EXECUTED);
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(ALARM_OFF);
               } else {
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_NOT_EXECUTED);
               }
             }  else if (dtmfCmd == CMD100) {
               Serial.print(F("Check command \"")); Serial.print(CMD100); Serial.println(F("\""));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(INFORMATION_SENT);
               delay(2000);
               sim800HangUp();
@@ -340,10 +339,10 @@ void loop() {
             } else if (dtmfCmd == CMD333) {
               Serial.print(F("Check command \"")); Serial.print(CMD333); Serial.println(F("\""));
               Serial.println(F("Enter password"));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
               if (checkUserPassword()) {
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_EXECUTED);
                 delay(2000);
                 sim800HangUp();
@@ -351,58 +350,58 @@ void loop() {
                 timeout = 0;
               } else {
                 Serial.println(F("Invalid user password!!!"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
             } else if (dtmfCmd == CMD9) {
               Serial.print(F("Check command \"")); Serial.print(CMD9); Serial.println(F("\""));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(HELP);
             } else if (dtmfCmd == CMD6) {
               Serial.print(F("Check command \"")); Serial.print(CMD6); Serial.println(F("\""));
               Serial.println("Введите пароль");
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
               if (checkUserPassword()) {
                 Serial.println(F("Enter new guest password"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(NEW_GUEST_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
                   strcpy(Config.guestPassword, tmpPassword.c_str());
                   saveConfig();
-                  sim800StopPlay(0);
+                  sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
                   sim800SendSMS(CallID, "New guest password: "+(String)Config.guestPassword);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
             } else if (dtmfCmd == CMD66) {
               Serial.print(F("Check command \"")); Serial.print(CMD66); Serial.println(F("\""));
               Serial.println(F("Enter password"));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
               if (checkUserPassword()) {
                 Serial.println(F("Enter new user password"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(NEW_USER_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
                   strcpy(Config.userPassword, tmpPassword.c_str());
                   saveConfig();
-                  sim800StopPlay(0);
+                  sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
                   sim800SendSMS(CallID, "New user password: "+(String)Config.userPassword);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
             } else if (dtmfCmd == CMD666) {
               Serial.print(F("Check command \"")); Serial.print(CMD666); Serial.println(F("\""));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
               if (checkUserPassword()) {
                 clearEeprom();
@@ -410,24 +409,24 @@ void loop() {
                 firstCall = true;
                 timeout = 0;
                 Serial.println(F("Clear config!!!"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(CMD_EXECUTED);
                 delay(2000);
               } else {
                 Serial.println(F("Invalid user password!!!"));
-                sim800StopPlay(0);
+                sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
             } else {
               Serial.println(F("No command"));
-              sim800StopPlay(0);
+              sim800StopPlay();
               sim800PlayTrack(NO_CMD);
             }
             dtmfCmd = "";
             timeoutDTMF = millis();
             Serial.println();
           } else if (atCmd.indexOf("+DTMF: #") > -1) {
-            sim800StopPlay(0);
+            sim800StopPlay();
             sim800PlayTrack(WELCOME);
             Serial.println("#");
             Serial.println(F("\nBegin now"));
