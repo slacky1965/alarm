@@ -87,6 +87,7 @@ typedef struct config {
 
 _config Config;
 
+
 /* For EEPROM */
 #define EEPROM_START 0
 bool setEEPROM = false;
