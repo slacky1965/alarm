@@ -2,6 +2,8 @@ void setup() {
   Serial.begin(9600);
   SIM800.begin(9600);
 
+  _response = NULL;
+
   lastCheckSIM = lastCheckSimStatus = 0;
   firstStart = true;
 

@@ -1,7 +1,7 @@
 void clearEeprom() {
-//  EEPROM.begin(sizeof(_config)+sizeof(memcrc));
+  //  EEPROM.begin(sizeof(_config)+sizeof(memcrc));
 
-  for (int i = EEPROM_START; i < EEPROM_START+sizeof(_config)+sizeof(memcrc); i++) {
+  for (int i = EEPROM_START; i < EEPROM_START + sizeof(_config) + sizeof(memcrc); i++) {
     EEPROM.write(i, 0);
   }
   EEPROM.end();
@@ -29,88 +29,134 @@ unsigned long crc_byte(byte *b, int len) {
 
 
 
-bool checkWhiteList(String msgPhone) {
+bool checkWhiteList(char* msgPhone) {
 
-  String phone;
+  char phone[13];
   int i;
 
   for (i = 0; i < 3; i++) {
-    phone = Config.phoneWhiteList[i];
-    Serial.print(i+1); Serial.print(F(". ConfigPhone: ")); Serial.println(phone);
-    if (msgPhone.length() > 6 && phone.indexOf(msgPhone) > -1) return true;
+    strcpy(phone, Config.phoneWhiteList[i]);;
+    Serial.print(i + 1); Serial.print(F(". ConfigPhone: ")); Serial.println(phone);
+    if (strlen(msgPhone) > 6 && strcmp(phone, msgPhone) == 0) return true;
   }
-  return false;  
+  return false;
 }
 
 bool checkGuestPassword() {
   enterPassword(enterPasswordPeriod);
-  if (strcmp(tmpPassword.c_str(), Config.guestPassword) != 0 ) return false;
+  if (strcmp(tmpPassword, Config.guestPassword) != 0 ) return false;
   return true;
 }
 
 bool checkUserPassword() {
   enterPassword(enterPasswordPeriod);
-  if (strcmp(tmpPassword.c_str(), Config.userPassword) != 0 ) return false;
+  Serial.println(tmpPassword);
+  if (strcmp(tmpPassword, Config.userPassword) != 0 ) return false;
   return true;
 }
 
 
 bool enterPassword(unsigned long period) {
   unsigned long timeout = millis();
-  String atCmd;
+  char *atCmd = NULL;
+  int i = 0;
   bool pinEnt = false;
-  tmpPassword = "";
+  memset((void*)tmpPassword, 0, sizeof(tmpPassword));
 
   do {
+    free(atCmd);
     atCmd = sim800ReadDTMF();
+    if (!atCmd) continue;
     delay(100);
-    if (atCmd.indexOf("+DTMF: 1") > -1) {
-      tmpPassword += "1";
+    if (strncmp(atCmd, "+DTMF: 1", 8) == 0) {
+      tmpPassword[i++] = '1';
       Serial.print(F("1"));
-    } else if (atCmd.indexOf("+DTMF: 2") > -1) {
-      tmpPassword += "2";
+    } else if (strncmp(atCmd, "+DTMF: 2", 8) == 0) {
+      tmpPassword[i++] = '2';
       Serial.print(F("2"));
-    } else if (atCmd.indexOf("+DTMF: 3") > -1) {
-      tmpPassword += "3";
+    } else if (strncmp(atCmd, "+DTMF: 3", 8) == 0) {
+      tmpPassword[i++] = '3';
       Serial.print(F("3"));
-    } else if (atCmd.indexOf("+DTMF: 4") > -1) {
-      tmpPassword += "4";
+    } else if (strncmp(atCmd, "+DTMF: 4", 8) == 0) {
+      tmpPassword[i++] = '4';
       Serial.print(F("4"));
-    } else if (atCmd.indexOf("+DTMF: 5") > -1) {
-      tmpPassword += "5";
+    } else if (strncmp(atCmd, "+DTMF: 5", 8) == 0) {
+      tmpPassword[i++] = '5';
       Serial.print(F("5"));
-    } else if (atCmd.indexOf("+DTMF: 6") > -1) {
-      tmpPassword += "6";
+    } else if (strncmp(atCmd, "+DTMF: 6", 8) == 0) {
+      tmpPassword[i++] = '6';
       Serial.print(F("6"));
-    } else if (atCmd.indexOf("+DTMF: 7") > -1) {
-      tmpPassword += "7";
+    } else if (strncmp(atCmd, "+DTMF: 7", 8) == 0) {
+      tmpPassword[i++] = '7';
       Serial.print(F("7"));
-    } else if (atCmd.indexOf("+DTMF: 8") > -1) {
-      tmpPassword += "8";
+    } else if (strncmp(atCmd, "+DTMF: 8", 8) == 0) {
+      tmpPassword[i++] = '8';
       Serial.print(F("8"));
-    } else if (atCmd.indexOf("+DTMF: 9") > -1) {
-      tmpPassword += "9";
+    } else if (strncmp(atCmd, "+DTMF: 9", 8) == 0) {
+      tmpPassword[i++] = '9';
       Serial.print(F("9"));
-    } else if (atCmd.indexOf("+DTMF: 0") > -1) {
-      tmpPassword += "0";
+    } else if (strncmp(atCmd, "+DTMF: 0", 8) == 0) {
+      tmpPassword[i++] = '0';
       Serial.print(F("0"));
-    } else if (atCmd.indexOf("+DTMF: #") > -1) {
-      tmpPassword = "";
+    } else if (strncmp(atCmd, "+DTMF: #", 8) == 0) {
+      memset(tmpPassword, 0, sizeof(tmpPassword));
       Serial.print(F("#"));
-      break;      
-    } else if (atCmd.indexOf("NO CARRIER") > -1){ 
+      break;
+    } else if (strstr(atCmd, "NO CARRIER")) {
       break;
     }
 
-    if (tmpPassword.length() == 4) pinEnt = true;
-        
+    if (strlen(tmpPassword) == 4) {
+      pinEnt = true;
+    }
 
-          
-  } while (!pinEnt && (timeout+period) > millis());
+  } while (!pinEnt && i < 5 && (timeout + period) > millis());
+
+  free(atCmd);
 
   Serial.println();
 
   return pinEnt;
-  
+
+}
+
+void strtrim(char *s) {
+
+  /* With begin */
+  int i = 0, j;
+  while ((s[i] == ' ') || (s[i] == '\t')) {
+    i++;
+  }
+  if (i > 0) {
+    for (j = 0; j < strlen(s); j++)
+    {
+      s[j] = s[j + i];
+    }
+    s[j] = '\0';
+  }
+
+  /* With end */
+  i = strlen(s) - 1;
+  while ((s[i] == ' ') || (s[i] == '\t') || (s[i] == '\r') || (s[i] == '\n')) {
+    i--;
+  }
+  if (i < (strlen(s) - 1)) {
+    s[i + 1] = '\0';
+  }
+}
+
+bool isNumber(char c) {
+  return (c >= '0' && c <= '9');
+}
+
+bool checkPhoneFormat(char* phone) {
+  int i, len = strlen(phone);
+
+  if (phone[0] != '+' || len != sizeof(Config.phoneWhiteList[0])-1) return false;
+
+  for (i = 1; i < len; i++) {
+    if (!isNumber(phone[i])) return false;
+  }
+  return true;  
 }
 

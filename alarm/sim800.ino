@@ -1,9 +1,10 @@
 bool sim800Check() {
   _response = sim800WriteCmd("AT+CPAS", DEFAULT_TIMEOUT);
 
-  if (_response == "") simStatus = false;
+  if (!_response) simStatus = false;
   else {
-    if (_response.indexOf("+CPAS: 0", 1) > -1 || _response.indexOf("+CPAS: 3", 1) > -1 || _response.indexOf("+CPAS: 4", 1) > -1) {
+    if (strstr(_response, "+CPAS: 0") || strstr(_response, "+CPAS: 3") || strstr(_response, "+CPAS: 4")) {
+      //    if (_response.indexOf("+CPAS: 0", 1) > -1 || _response.indexOf("+CPAS: 3", 1) > -1 || _response.indexOf("+CPAS: 4", 1) > -1) {
       simStatus = true;
       simReset = 0;
     } else simStatus = false;
@@ -24,12 +25,16 @@ void sim800Init() {
 
   if (!sim800Check()) return;
 
-  sim800WriteCmd("AT", 3);
-  sim800WriteCmd("ATE0", 3);                                  /* Echo mode off        */
-  sim800WriteCmd("AT+DDET=1", 3);                             /* Set DTMF code        */
-  sim800WriteCmd("AT+CLIP=1", 3);                             /* Set Caller ID        */
-  sim800WriteCmd("AT+CMIC=0,"+(String)MIC_VOLUME, 3);         /* Set volume Mic input */
-  sim800WriteCmd("AT+CMGF=1;&W", 3);                          /* Set TextMode for SMS */
+  unsigned int timeout = 3;
+  char at[12];
+
+  sim800WriteCmd("AT", timeout);
+  sim800WriteCmd("ATE0", timeout);                                  /* Echo mode off        */
+  sim800WriteCmd("AT+DDET=1", timeout);                             /* Set DTMF code        */
+  sim800WriteCmd("AT+CLIP=1", timeout);                             /* Set Caller ID        */
+  sprintf(at, "AT+CMIC=0,%d", MIC_VOLUME);
+  sim800WriteCmd(at, timeout);                                      /* Set volume Mic input */
+  sim800WriteCmd("AT+CMGF=1;&W", timeout);                          /* Set TextMode for SMS */
 
   /* Delete all SMS after power on of system */
   if (firstStart) {
@@ -38,44 +43,84 @@ void sim800Init() {
   }
 }
 
-String sim800WriteCmd(String cmd, unsigned long waiting) {
-  String resp = "";
+char* sim800WriteCmd(const char *cmd, unsigned long waiting) {
+  char *resp = NULL;
   Serial.println(cmd);
   SIM800.println(cmd);
   if (waiting > 0) {
     resp = sim800WaitResponse(waiting);
-    Serial.println(resp);
+    if (resp) Serial.println(resp);
+    else Serial.println(F("Empty response"));
+  } else {
+    if (_response) free(_response);
+    _response = NULL;
   }
   return resp;
 }
 
-String sim800WaitResponse(unsigned long timeout) {
-  String resp = "";
+char* sim800WaitResponse(unsigned long timeout) {
+  unsigned int pCount;
+  char inChar, *p = NULL;
+
   unsigned long timeOld = millis();
-  while (!SIM800.available() && !(millis() > timeOld + timeout*1000)) {
+
+  while (!SIM800.available() && !(millis() > timeOld + timeout * 1000)) {
     delay(13);
   }
+
   if (SIM800.available()) {
-    resp = SIM800.readString();
+    for (pCount = 0; SIM800.available(); pCount++) {
+      if (pCount == 0 || (pCount % DEFAULT_BUFFER_SIZE) == 0) {
+        p = (char*)realloc(_response, DEFAULT_BUFFER_SIZE + pCount);
+        if (!p) {
+          Serial.println(F("Error realloc in sim800WaitResponse()"));
+          while (1);
+        }
+      }
+      _response = p;
+      inChar = SIM800.read();
+      if (pCount == 0 && (inChar == '\r' || inChar == '\n' || inChar == ' ')) {
+        pCount--;
+        continue;
+      }
+      p[pCount] = inChar;
+      delay(1);
+    }
+    p[pCount] = 0;
   } else {
     Serial.println(F("Timeout..."));
     simReset++;
   }
-  return resp;
+
+  return p;
 }
 
-String sim800ReadDTMF() {
+char* sim800ReadDTMF() {
   int in;
-  String cmd = "";
-//  unsigned long timeStart = millis();
-  SIM800.listen();
-//  while (!SIM800.available() && (timeStart + 5) > millis()) {};
-  while (SIM800.available()) {
-    in = SIM800.read();
-    cmd += char(in);
-    delay(1);
+  unsigned int i;
+  char *cmd = (char*)malloc(DEFAULT_BUFFER_SIZE);
+  if (!cmd) {
+    Serial.println(F("Error mallac in sim800ReadDTMF()"));
+    cmd = NULL;
+    return cmd;
   }
-//  Serial.print(F("DTMF :")); Serial.println(cmd);
+
+  memset((void*)cmd, 0, DEFAULT_BUFFER_SIZE);
+
+  for (i = 0; SIM800.available() && i < DEFAULT_BUFFER_SIZE; i++) {
+    in = SIM800.read();
+    if (i == 0 && ((char)in == '\r' || (char)in == '\n' || (char)in == ' ')) {
+      i--;
+      continue;
+    }
+    cmd[i] = char(in);
+    delay(2);
+  }
+  if (i == 0) {
+    free(cmd);
+    cmd = NULL;
+  }
+  //  Serial.print(F("DTMF : \"")); Serial.print(cmd); Serial.println(F("\""));
   return cmd;
 }
 
@@ -90,26 +135,24 @@ void sim800Reset() {
 
 void sim800DeleteSMS(_deleteSMS DEL) {
 
-  String cmd;
-  
-  cmd = "AT+CMGDA=\"DEL ";
+  char cmd[32], *at = "AT+CMGDA=\"DEL ";
 
   switch (DEL) {
     case ALL:
-      cmd += "ALL\"";
+      sprintf(cmd, "%s%s", at, "ALL\"");
       break;
     case READ:
-      cmd += "READ\"";
+      sprintf(cmd, "%s%s", at, "READ\"");
       break;
     case SENT:
-      cmd += "SENT\"";
+      sprintf(cmd, "%s%s", at, "SENT\"");
       break;
     default:
-      cmd = "";
+      cmd[0] = 0;
       break;
   }
 
-  if (cmd != "") {
+  if (cmd[0] != 0) {
     sim800WriteCmd(cmd, DEFAULT_TIMEOUT);
   }
 }
@@ -122,137 +165,195 @@ void sim800HangUp() {
 void sim800PlayTrack(_track track) {
   strcpy_P(fileName, (char*)pgm_read_word(&(msgName[track])));
   sim800WriteCmd(fileName, 0);
-  delay(DEFAULT_DELAY_PLAY_TRACK*1000);
+  delay(DEFAULT_DELAY_PLAY_TRACK * 1000);
 }
 
 void sim800StopPlay() {
   sim800WriteCmd("AT+CREC=5", 0);
 }
 
-void sim800SendSMS(String phone, String message)
-{
-  sim800WriteCmd("AT+CMGS=\"" + phone + "\"", DEFAULT_TIMEOUT);
-  sim800WriteCmd(message + "\r\n" + (String)((char)26), DEFAULT_TIMEOUT);
+void sim800SendSMS(char* phone, char* message) {
+  char at[DEFAULT_BUFFER_SIZE];
+
+  sprintf(at, "AT+CMGS=\"%s\"", phone);
+  sim800WriteCmd(at, DEFAULT_TIMEOUT);
+
+  sprintf(at, "\r\n%s\r\n%c", message, (char)26);
+  sim800WriteCmd(at, DEFAULT_TIMEOUT);
+
   deleteSentSMS = true;
 }
 
-String sim800IdxUnreadSMS() {
-  String resp = sim800WriteCmd("AT+CMGL=\"REC UNREAD\",1", DEFAULT_TIMEOUT);
+char* sim800IdxUnreadSMS() {
+  char *resp = sim800WriteCmd("AT+CMGL=\"REC UNREAD\",1", DEFAULT_TIMEOUT);
   return resp;
 }
 
-String sim800ReadSMS(int msgIndex) {
-  String resp = sim800WriteCmd("AT+CMGR=" + (String)msgIndex + ",1", DEFAULT_TIMEOUT);
+char* sim800ReadSMS(int msgIndex) {
+  char at[16];
+
+  sprintf(at, "AT+CMGR=%u,1", msgIndex);
+  Serial.print(F("sim800ReadSMS - \"")); Serial.print(at); Serial.println("\"");
+  char *resp = sim800WriteCmd(at, DEFAULT_TIMEOUT);
+
   return resp;
 }
 
 void sim800SetReadSMS(int msgIndex) {
-  sim800WriteCmd("AT+CMGR=" + (String)msgIndex, DEFAULT_TIMEOUT);
+  char at[10];
+
+  sprintf(at, "AT+CMGR=%u", msgIndex);
+
+  sim800WriteCmd(at, DEFAULT_TIMEOUT);
 }
 
 void sim800RequestBalance() {
-  sim800WriteCmd("AT+CUSD=1,\""+(String)BALANCE+"\"", DEFAULT_TIMEOUT);
+  char at[DEFAULT_BUFFER_SIZE];
+  sprintf(at, "AT+CUSD=1,\"%s\"", BALANCE);
+  sim800WriteCmd(at, DEFAULT_TIMEOUT);
 }
 
 void sim800Answer() {
   sim800WriteCmd("ATA", DEFAULT_TIMEOUT);
 }
 
-void sim800ParseSMS(String msg) {                                   // Парсим SMS
+void sim800ParseSMS(char* msg) {                                   // Парсим SMS
 
-  /* SMS-commands 
-   *  
-   *  "1*[:1234]"           - alarm on
-   *  "0*"                  - alarm off
-   *  "100*[:1234]"         - balance inquiry
-   *  "2*:2[:+7916xxxxxxx]" - add (or remove) a second phone number to the white list
-   *  "2*:3[:+7916xxxxxxx]" - add (or remove) a third phone number to the white list
-   *  "8*[:1234]"           - to send an SMS with the information about the system
-   *  
-   */
-  
-  String msgHeader  = "";
-  String msgBody    = "";
-  String msgPhone   = "";
-  String password   = "";
-  String newPhone   = "";
+  /* SMS-commands
+
+      "1*[:1234]"           - alarm on command[:password]
+      "0*"                  - alarm off
+      "100*[:1234]"         - balance inquiry 
+      "2*:2[:+7916xxxxxxx]" - add (or remove) a second phone number to the white list
+      "2*:3[:+7916xxxxxxx]" - add (or remove) a third phone number to the white list
+      "8*[:1234]"           - to send an SMS with the information about the system
+
+  */
+
+  char *p, *pp, *ppp;
+  char *msgHeader = NULL;
+  char *msgBody   = NULL;
+  char msgPhone[13];
+  char newPhone[13];
+  char password[5];
   bool phoneWhiteList = false;
-  int idx, poz;
+  bool parseMsg = false;
+  int poz;
 
-  msg = msg.substring(msg.indexOf("+CMGR: "));
-  msgHeader = msg.substring(0, msg.indexOf("\r"));            // Выдергиваем телефон
+  p = strstr(msg, "+CMGR: ");
+  if (p) {
+    pp = strpbrk(p, "\r");
+    if (pp) {
+      size_t len = pp - p + 1;
+      msgHeader = (char*)malloc(len);
+      memset(msgHeader, 0, len);
+      if (msgHeader) {
+        strncpy(msgHeader, p, pp - p);
+        pp = p + strlen(msgHeader) + 2;
+        ppp = strstr(p, "OK");
+        if (ppp) {
+          len = ppp - pp + 1;
+          msgBody = (char*)malloc(len);
+          memset(msgBody, 0, len);
+          if (msgBody) {
+            strncpy(msgBody, pp, ppp - pp);
+            strtrim(msgBody);
+            p = strstr(msgHeader, "\",\"");
+            if (p) {
+              p += 3;
+              pp = strstr(p, "\",\"");
+              if (pp) {
+                strncpy(msgPhone, p, pp - p);
+                msgPhone[12] = 0;
+                Serial.print(F("Phone: ")); Serial.println(msgPhone);
+                Serial.print(F("Message: ")); Serial.println(msgBody);
+                parseMsg = true;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
-  msgBody = msg.substring(msgHeader.length() + 2);
-  msgBody = msgBody.substring(0, msgBody.lastIndexOf("OK"));  // Выдергиваем текст SMS
-  msgBody.trim();
-
-  int firstIndex = msgHeader.indexOf("\",\"") + 3;
-  int secondIndex = msgHeader.indexOf("\",\"", firstIndex);
-  msgPhone = msgHeader.substring(firstIndex, secondIndex);
-
-  Serial.print(F("Phone: ")); Serial.println(msgPhone);        // Выводим номер телефона
-  Serial.print(F("Message: ")); Serial.println(msgBody);     // Выводим текст SMS
+  if (!parseMsg) {
+    free(msgHeader);
+    free(msgBody);
+    Serial.println(F("Parse SMS is false."));
+    return;
+  }
 
   if (checkWhiteList(msgPhone)) {
     Serial.println(F("The phone from the whitelist"));
     phoneWhiteList = true;
   } else {
     Serial.println(F("Unknown phonenumber"));
-    idx = msgBody.indexOf(":");
-    if (idx > -1) {
-      password = msgBody.substring(idx+1, idx+5);
-      password.trim();
+    p = strstr(msgBody, ":");
+    if (p) {
+      strncpy(password, p + 1, 4);
+      password[4] = 0;
       Serial.print(F("password: ")); Serial.println(password);
-      if (strcmp(password.c_str(), Config.guestPassword) != 0) return;
+      if (strcmp(password, Config.guestPassword) != 0) { 
+        free(msgHeader);
+        free(msgBody);
+        return;
+      }
     } else {
       /* phone not present in white list and no password */
+      free(msgHeader);
+      free(msgBody);
       return;
     }
   }
 
-  if (msgBody.indexOf(CMD1) > -1) {
+  if (strstr(msgBody, CMD1)) {
     Serial.print(F("Check command \"")); Serial.print(CMD1); Serial.println(F("\""));
-  } else if (msgBody == CMD0) {
+    if (!alarmOn) alarmOn = true;
+  } else if (strstr(msgBody, CMD0)) {
     Serial.print(F("Check command \"")); Serial.print(CMD0); Serial.println(F("\""));
-  } else if (msgBody.indexOf(CMD2) > -1) {
-    Serial.println(msgBody.substring(0, 2));
-    if (msgBody.substring(0, 2) == CMD2) {
-      Serial.print(F("Check command \"")); Serial.print(CMD2); Serial.println(F("\""));
-      idx = msgBody.indexOf(":");
-      if (idx > -1) {
-        poz = msgBody.substring(idx+1, idx+2).toInt();
-        if (poz == 2 || poz == 3) {
-          idx = msgBody.indexOf(":", idx+1);
-          if (idx > -1) {
-            newPhone = msgBody.substring(idx+1);
-            /* Invalid phone format */
-            if (newPhone.length() != sizeof(Config.phoneWhiteList[poz-1])-1 || newPhone[0] != '+') return;
+    if (alarmOn) alarmOn = false;
+  } else if (strstr(msgBody, CMD2)) {
+    Serial.print(F("Check command \"")); Serial.print(CMD2); Serial.println(F("\""));
+    memset(newPhone, 0, sizeof(newPhone));
+    p = strstr(msgBody, ":");
+    if (p && strlen(msgBody) > 3) {
+      poz = (p+1)[0] - '0' ;
+
+      if (poz == 2 || poz == 3) {
+        char sms[32];
+        p = strstr(p + 1, ":");
+        if (p) {
+          p++;
+          /* Invalid phone format */
+          if (!checkPhoneFormat(p)) {
+            sprintf(sms, "Invalid phone format \"%s\"", p);
+            sim800SendSMS(msgPhone, sms);
+            return;
           }
-          /* Stored in the variable password old number */
-          password = Config.phoneWhiteList[poz-1];
-          memset((void*)Config.phoneWhiteList[poz-1], 0, sizeof(Config.phoneWhiteList[poz-1]));
-          if (newPhone != "") {
-            strcpy(Config.phoneWhiteList[poz-1], newPhone.c_str());
-            msgBody = "Added phone ";
-            msgBody += poz;
-            msgBody += " " + newPhone;
-          } else {
-            msgBody = "Delete phone ";
-            msgBody += poz;
-            msgBody += " " + password;
-          }
-          saveConfig();
-          sim800SendSMS(msgPhone, msgBody);
+          strcpy(newPhone, p);
         }
+        if (strlen(newPhone)) {
+          strcpy(Config.phoneWhiteList[poz - 1], newPhone);
+          sprintf(sms, "Added phone %d %s", poz, newPhone);
+        } else {
+          sprintf(sms, "Delete phone %d %s", poz, Config.phoneWhiteList[poz - 1]);
+          memset((void*)Config.phoneWhiteList[poz - 1], 0, sizeof(Config.phoneWhiteList[poz - 1]));
+        }
+        saveConfig();
+        sim800SendSMS(msgPhone, sms);
       }
     }
-  } else if (msgBody.indexOf(CMD100) > -1) {
+  } else if (strstr(msgBody, CMD100)) {
     Serial.print(F("Check command \"")); Serial.print(CMD100); Serial.println(F("\""));
     requestBalance = true;
-    CallID = msgPhone;
-  } else if (msgBody.indexOf(CMD9) > -1) {
-    Serial.print(F("Check command \"")); Serial.print(CMD9); Serial.println(F("\""));
+    strcpy(CallID, msgPhone);
+  } else if (strstr(msgBody, CMD8)) {
+    Serial.print(F("Check command \"")); Serial.print(CMD8); Serial.println(F("\""));
   }
+
+  free(msgHeader);
+  free(msgBody);
+
 }
 
 

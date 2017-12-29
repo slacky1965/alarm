@@ -1,6 +1,6 @@
 /*
- * This is example
- */
+   This is example
+*/
 
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
@@ -33,6 +33,9 @@
 
 #define DEFAULT_TIMEOUT 5                       /* Timeout for waiting a response in sec    */
 #define DEFAULT_DELAY_PLAY_TRACK 2              /* Default delay after play track in sec   */
+
+#define DEFAULT_BUFFER_SIZE 64
+#define DTMF_BUFFER_SIZE  12
 
 /* Voice files in SIM800 memory and command string into PROGMEM */
 const char msg0[] PROGMEM = "AT+CREC=4,\"C:\\User\\1.amr\",0,80";
@@ -98,17 +101,16 @@ static const PROGMEM uint32_t crc_table[16] = {
   0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
 };
 
-String CallID;
-String tmpPassword;
-String dtmfCmd;
+char CallID[13];
+char tmpPassword[5];
 int simReset;
-long updatePeriod = 60000;                                        /* Update one time per minute              */
-long updateSimStatus = 5000;                                      /* Update SIM800 status one time per 5 sec */
-long enterPasswordPeriod = 20000;                                 /* Timeout for enter to password           */
-String _response = "";                                            /* Buffer for modem serial answers         */
+long updatePeriod = 60000;                                        /* Update one time per minute                 */
+long updateSimStatus = 5000;                                      /* Update SIM800 status one time per 5 sec    */
+long enterPasswordPeriod = 20000;                                 /* Timeout for enter to password              */
+char *_response;                                                  /* Pointer of buffer for modem serial answers */
 long lastUpdate = 0, lastCheckSIM = 0, lastCheckSimStatus = 0;
 
-bool firstStart     = false;
+bool firstStart     = false;                                      /* First start after power-on or reboot       */
 bool simStatus      = false;
 bool firstCall      = false;
 bool guestSession   = false;
@@ -139,25 +141,36 @@ void loop() {
       Serial.println();
       Serial.print(F("userPassword: ")); Serial.println(Config.userPassword);
       Serial.print(F("guestPassword: ")); Serial.println(Config.guestPassword);
+      char *pBegin, *pEnd;
       while (1) {
         _response = sim800IdxUnreadSMS();                           /* Send request for unread SMS  */
-        if (_response.indexOf("+CMGL: ") > -1) {                    /* Get index first unread SMS   */
-          int msgIndex = _response.substring(_response.indexOf("+CMGL: ") + 7,
-                         _response.indexOf("\"REC UNREAD\"", _response.indexOf("+CMGL: "))).toInt();
-          int i;                                               
+        pBegin = strstr(_response, "+CMGL: ");
+        int msgIndex = 0;
+        if (pBegin) {
+          pEnd = strstr(pBegin, ",\"REC UNREAD\"");
+          if (pEnd) {
+            char idx[5];
+            pBegin += 7;
+            strncpy(idx, pBegin, pEnd - pBegin);
+            idx[pEnd - pBegin] = 0;
+            msgIndex = atoi(idx);
+          }
+        }
+        if (msgIndex) {
+          int i;
           for (i = 0; i < 10; i++) {
-            _response = sim800ReadSMS(msgIndex);                    /* Read text SMS                */
-            _response.trim();                                       
-            if (_response.endsWith("OK")) {                         
+            _response = sim800ReadSMS(msgIndex);
+            strtrim(_response);
+            pBegin = _response + (strlen(_response) - 5);
+            if (strstr(pBegin, "OK")) {
               if (!deleteReadSMS) deleteReadSMS = true;             /* Up flag for delete read SMS  */
               sim800SetReadSMS(msgIndex);                           /* Set SMS is read              */
-              sim800ParseSMS(_response);                            /* Parse text SMS               */      
+              sim800ParseSMS(_response);                            /* Parse text SMS               */
               break;
             } else {
               Serial.println (F("Error answer"));
             }
           }
-          /* If 10 times "Error answer", then SMS is bad. Ignored */
           if (i == 10) {
             if (!deleteReadSMS) deleteReadSMS = true;
             sim800SetReadSMS(msgIndex);
@@ -175,32 +188,36 @@ void loop() {
       }
     }
 
-    if (SIM800.available())   {                         
+    if (SIM800.available())   {
       _response = sim800WaitResponse(DEFAULT_TIMEOUT);
-      _response.trim();
       Serial.println(_response);
 
       /* Detected USSD answer */
-      if (_response.startsWith("+CUSD:")) {
-          if (_response.indexOf("\"") > -1) {
-            String msgBalance = _response.substring(_response.indexOf("\"") + 1);
-            msgBalance = msgBalance.substring(0, msgBalance.indexOf("\""));
-            Serial.print(F("USSD: ")); Serial.println(msgBalance);
-            /* Send info about balance */
-            sim800SendSMS(CallID, msgBalance);
-            /* Up flag for delete sent SMS */
-            deleteSentSMS = true;
-          }
-      }      
+      if (strstr(_response, "+CUSD:")) {
+        Serial.println(F("Запрос баланса"));
+        char *pBegin, *pEnd;
+        pBegin = strpbrk(_response, "\"");
+        if (pBegin) {
+          pBegin++;
+          pEnd = strpbrk(pBegin, "\"");
+          char msgBalance[DEFAULT_BUFFER_SIZE];
+          memset((void*)msgBalance, 0, DEFAULT_BUFFER_SIZE);
+          strncpy(msgBalance, pBegin, (size_t)(pEnd - pBegin));
+          Serial.print(F("USSD: ")); Serial.println(msgBalance);
+          /* Send info about balance */
+          sim800SendSMS(CallID, msgBalance);
+          /* Up flag for delete sent SMS */
+          deleteSentSMS = true;
+        }
+      }
 
       /* Detected incoming call */
-      if (_response.startsWith("RING")) {
-        CallID = "";
-        int phoneindex = _response.indexOf("+CLIP: \"");
-        if (phoneindex >= 0) {
+      if (strncmp(_response, "RING", 4) == 0) {
+        char *phoneindex = strstr(_response, "+CLIP: \"");
+        if (phoneindex) {
           phoneindex += 8;
           /* Get number of incoming call */
-          CallID = _response.substring(phoneindex, _response.indexOf("\"", phoneindex));
+          strncpy(CallID, phoneindex, 12);
           Serial.print(F("Number: ")); Serial.println(CallID);
         }
 
@@ -218,8 +235,8 @@ void loop() {
           sim800PlayTrack(ENTER_PASSWORD);
 
           if (enterPassword(enterPasswordPeriod)) {
-            strcpy(Config.userPassword, tmpPassword.c_str());
-            strcpy(Config.phoneWhiteList[0], CallID.c_str());
+            strcpy(Config.userPassword, tmpPassword);
+            strcpy(Config.phoneWhiteList[0], CallID);
             saveConfig();
             firstCall = false;
             Serial.println(F("Activation sent in SMS"));
@@ -227,8 +244,11 @@ void loop() {
             sim800PlayTrack(ACTIVATION_SENT);
             delay(2000);
             sim800HangUp();
+            delay(1000);
             /* Send number of incoming call and entered password to SMS */
-            sim800SendSMS(CallID, "Phone: \"" + CallID + "\"\r\n" + "Password: \"" + tmpPassword+ "\"");
+            char msg[DEFAULT_BUFFER_SIZE];
+            sprintf(msg, "Phone: \"%s\"\r\nPassword: \"%s\"", CallID, tmpPassword);
+            sim800SendSMS(CallID, msg);
             return;
           } else {
             sim800HangUp();
@@ -251,61 +271,69 @@ void loop() {
           }
         }
 
+        bool onLine = true;
         unsigned long timeout = millis(), timeoutDTMF = millis();
-        String atCmd;
-        dtmfCmd = "";
+        unsigned int pCmd = 0;
+        char *dtmfResp = NULL;
+        char dtmfCmd[DTMF_BUFFER_SIZE];
+        memset(dtmfCmd, 0, DTMF_BUFFER_SIZE);
         delay(1000);
         sim800StopPlay();
 
         /* Reading DTMF of code */
-        while (1) {
-          atCmd = sim800ReadDTMF();
+        while (onLine) {
+          free(dtmfResp);
+          dtmfResp = sim800ReadDTMF();
           delay(100);
-          if (atCmd.indexOf("+DTMF: 1") > -1) {
-            dtmfCmd += "1";
+          if (strncmp(dtmfResp, "+DTMF: 1", 8) == 0) {
+            dtmfCmd[pCmd++] = '1';
             timeoutDTMF = millis();
             Serial.print(F("1"));
-          } else if (atCmd.indexOf("+DTMF: 2") > -1) {
-            dtmfCmd += "2";
+          } else if (strncmp(dtmfResp, "+DTMF: 2", 8) == 0) {
+            dtmfCmd[pCmd++] = '2';
             timeoutDTMF = millis();
             Serial.print(F("2"));
-          } else if (atCmd.indexOf("+DTMF: 3") > -1) {
-            dtmfCmd += "3";
+          } else if (strncmp(dtmfResp, "+DTMF: 3", 8) == 0) {
+            dtmfCmd[pCmd++] = '3';
             timeoutDTMF = millis();
             Serial.print(F("3"));
-          } else if (atCmd.indexOf("+DTMF: 4") > -1) {
-            dtmfCmd += "4";
+          } else if (strncmp(dtmfResp, "+DTMF: 4", 8) == 0) {
+            dtmfCmd[pCmd++] = '4';
             timeoutDTMF = millis();
             Serial.print(F("4"));
-          } else if (atCmd.indexOf("+DTMF: 5") > -1) {
-            dtmfCmd += "5";
+          } else if (strncmp(dtmfResp, "+DTMF: 5", 8) == 0) {
+            dtmfCmd[pCmd++] = '5';
             timeoutDTMF = millis();
             Serial.print(F("5"));
-          } else if (atCmd.indexOf("+DTMF: 6") > -1) {
-            dtmfCmd += "6";
+          } else if (strncmp(dtmfResp, "+DTMF: 6", 8) == 0) {
+            dtmfCmd[pCmd++] = '6';
             timeoutDTMF = millis();
             Serial.print(F("6"));
-          } else if (atCmd.indexOf("+DTMF: 7") > -1) {
-            dtmfCmd += "7";
+          } else if (strncmp(dtmfResp, "+DTMF: 7", 8) == 0) {
+            dtmfCmd[pCmd++] = '7';
             timeoutDTMF = millis();
             Serial.print(F("7"));
-          } else if (atCmd.indexOf("+DTMF: 8") > -1) {
-            dtmfCmd += "8";
+          } else if (strncmp(dtmfResp, "+DTMF: 8", 8) == 0) {
+            dtmfCmd[pCmd++] = '8';
             timeoutDTMF = millis();
             Serial.print(F("8"));
-          } else if (atCmd.indexOf("+DTMF: 9") > -1) {
-            dtmfCmd += "9";
+          } else if (strncmp(dtmfResp, "+DTMF: 9", 8) == 0) {
+            dtmfCmd[pCmd++] = '9';
             timeoutDTMF = millis();
             Serial.print(F("9"));
-          } else if (atCmd.indexOf("+DTMF: 0") > -1) {
-            dtmfCmd += "0";
+          } else if (strncmp(dtmfResp, "+DTMF: 0", 8) == 0) {
+            dtmfCmd[pCmd++] = '0';
             timeoutDTMF = millis();
             Serial.print(F("0"));
-          } else if (atCmd.indexOf("+DTMF: *") > -1) {
-            dtmfCmd += "*";
+          } else if (strncmp(dtmfResp, "+DTMF: *", 8) == 0) {
+            dtmfCmd[pCmd++] = '*';
+            dtmfCmd[pCmd] = 0;
             Serial.println(F("*"));
+            Serial.print(F("dtmfCmd :\"")); Serial.print(dtmfCmd); Serial.println(F("\""));
+            Serial.print(F("pCmd :")); Serial.println(pCmd);
+            pCmd = 0;
             timeout = millis();
-            if (dtmfCmd == CMD1) {
+            if (strcmp(dtmfCmd, CMD1) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD1); Serial.println(F("\""));
               if (!alarmOn) {
                 alarmOn = true;
@@ -317,7 +345,7 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(CMD_NOT_EXECUTED);
               }
-            } else if (dtmfCmd == CMD0) {
+            } else if (strcmp(dtmfCmd, CMD0) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD0); Serial.println(F("\""));
               if (alarmOn) {
                 alarmOn = false;
@@ -329,7 +357,7 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(CMD_NOT_EXECUTED);
               }
-            }  else if (dtmfCmd == CMD100) {
+            }  else if (strcmp(dtmfCmd, CMD100) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD100); Serial.println(F("\""));
               sim800StopPlay();
               sim800PlayTrack(INFORMATION_SENT);
@@ -337,7 +365,8 @@ void loop() {
               sim800HangUp();
               requestBalance = true;
               timeout = 0;
-            } else if (dtmfCmd == CMD333) {
+              //break;
+            } else if (strcmp(dtmfCmd, CMD333) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD333); Serial.println(F("\""));
               Serial.println(F("Enter password"));
               sim800StopPlay();
@@ -347,18 +376,20 @@ void loop() {
                 sim800PlayTrack(CMD_EXECUTED);
                 delay(2000);
                 sim800HangUp();
+                delay(2000);
                 sim800Reset();
                 timeout = 0;
+                //break;
               } else {
                 Serial.println(F("Invalid user password!!!"));
                 sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
-            } else if (dtmfCmd == CMD9) {
+            } else if (strcmp(dtmfCmd, CMD9) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD9); Serial.println(F("\""));
               sim800StopPlay();
               sim800PlayTrack(HELP);
-            } else if (dtmfCmd == CMD6) {
+            } else if (strcmp(dtmfCmd, CMD6) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD6); Serial.println(F("\""));
               Serial.println("Введите пароль");
               sim800StopPlay();
@@ -368,18 +399,20 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(NEW_GUEST_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
-                  strcpy(Config.guestPassword, tmpPassword.c_str());
+                  strcpy(Config.guestPassword, tmpPassword);
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
-                  sim800SendSMS(CallID, "New guest password: "+(String)Config.guestPassword);
+                  char msg[32];
+                  sprintf(msg, "New guest password: %s", Config.guestPassword);
+                  sim800SendSMS(CallID, msg);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
                 sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
-            } else if (dtmfCmd == CMD66) {
+            } else if (strcmp(dtmfCmd, CMD66) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD66); Serial.println(F("\""));
               Serial.println(F("Enter password"));
               sim800StopPlay();
@@ -389,18 +422,20 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(NEW_USER_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
-                  strcpy(Config.userPassword, tmpPassword.c_str());
+                  strcpy(Config.userPassword, tmpPassword);
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
-                  sim800SendSMS(CallID, "New user password: "+(String)Config.userPassword);
+                  char msg[32];
+                  sprintf(msg, "New user password: %s", Config.userPassword);
+                  sim800SendSMS(CallID, msg);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
                 sim800StopPlay();
                 sim800PlayTrack(INVALID_PASSWORD);
               }
-            } else if (dtmfCmd == CMD666) {
+            } else if (strcmp(dtmfCmd, CMD666) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD666); Serial.println(F("\""));
               sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
@@ -413,6 +448,7 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(CMD_EXECUTED);
                 delay(2000);
+                //break;
               } else {
                 Serial.println(F("Invalid user password!!!"));
                 sim800StopPlay();
@@ -423,35 +459,41 @@ void loop() {
               sim800StopPlay();
               sim800PlayTrack(NO_CMD);
             }
-            dtmfCmd = "";
+            pCmd = 0;
+            memset(dtmfCmd, 0, sizeof(dtmfCmd));
             timeoutDTMF = millis();
             Serial.println();
-          } else if (atCmd.indexOf("+DTMF: #") > -1) {
+          } else if (strncmp(dtmfResp, "+DTMF: #", 8) == 0) {
+            pCmd = 0;
             sim800StopPlay();
             sim800PlayTrack(WELCOME);
             Serial.println("#");
             Serial.println(F("\nBegin now"));
-            dtmfCmd = "";
+            pCmd = 0;
+            memset(dtmfCmd, 0, sizeof(dtmfCmd));
             timeout = millis();
             timeoutDTMF = millis();
-          } else if (atCmd.indexOf("NO CARRIER") > -1 || (timeout + updatePeriod) < millis()) {
+          } else if (strstr(dtmfResp, "NO CARRIER") || (timeout + updatePeriod) < millis()) {
             sim800HangUp();
             break;
           } else {
             /* If the timeout between the enter DTMF code more than 10 seconds, to reset the input */
-            if (dtmfCmd.length() > 0 && dtmfCmd.indexOf("*") == -1 && (millis() - timeoutDTMF) > 10000) {
-              dtmfCmd = atCmd = "";
+            if (!strpbrk(dtmfCmd, "*") && strlen(dtmfCmd) > 0 && (millis() - timeoutDTMF) > 10000) {
+              pCmd = 0;
+              memset(dtmfCmd, 0, sizeof(dtmfCmd));
               timeoutDTMF = millis();
               Serial.println(F("Reset DTMF code"));
               continue;
             }
           }
+          Serial.println(timeout);
         }
-
+        free(dtmfResp);
       }
 
       /* New message has been received */
-      if (_response.indexOf("+CMTI:") > -1) {
+      if (strstr(_response, "+CMTI:")) {
+        //      if (_response.indexOf("+CMTI:") > -1) {
         lastUpdate = 0;
       }
 
@@ -469,7 +511,7 @@ void loop() {
       sim800DeleteSMS(SENT);
       deleteSentSMS = false;
     }
-      
+
     if (digitalRead(PIN_POWER_ON)) {
       if (!extPower) {
         extPower = true;
@@ -485,7 +527,7 @@ void loop() {
 
     if (Serial.available())  {
 
-        SIM800.write(Serial.read());
+      SIM800.write(Serial.read());
     }
 
 
