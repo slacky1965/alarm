@@ -53,7 +53,7 @@ const char msg11[] PROGMEM = "AT+CREC=4,\"C:\\User\\12.amr\",0,80";
 const char msg12[] PROGMEM = "AT+CREC=4,\"C:\\User\\13.amr\",0,80";
 
 const char* const msgName[] PROGMEM = {msg0, msg1, msg2, msg3, msg4, msg5, msg6, msg7, msg8, msg9, msg10, msg11, msg12};
-char fileName[32];
+char tmpBuffer[32];
 //strcpy_P(fileName, (char*)pgm_read_word(&(fileNameT[_track])));
 
 enum  _track {
@@ -102,7 +102,7 @@ static const PROGMEM uint32_t crc_table[16] = {
 };
 
 char CallID[13];
-char tmpPassword[5];
+//char tmpPassword[5];
 int simReset;
 long updatePeriod = 60000;                                        /* Update one time per minute                 */
 long updateSimStatus = 5000;                                      /* Update SIM800 status one time per 5 sec    */
@@ -235,7 +235,7 @@ void loop() {
           sim800PlayTrack(ENTER_PASSWORD);
 
           if (enterPassword(enterPasswordPeriod)) {
-            strcpy(Config.userPassword, tmpPassword);
+            strcpy(Config.userPassword, tmpBuffer);
             strcpy(Config.phoneWhiteList[0], CallID);
             saveConfig();
             firstCall = false;
@@ -247,7 +247,7 @@ void loop() {
             delay(1000);
             /* Send number of incoming call and entered password to SMS */
             char msg[DEFAULT_BUFFER_SIZE];
-            sprintf(msg, "Phone: \"%s\"\r\nPassword: \"%s\"", CallID, tmpPassword);
+            sprintf(msg, "Phone: \"%s\"\r\nPassword: \"%s\"", CallID, Config.userPassword);
             sim800SendSMS(CallID, msg);
             return;
           } else {
@@ -267,7 +267,7 @@ void loop() {
             sim800PlayTrack(WELCOME);
           } else {
             sim800HangUp();
-            Serial.print(F("Hang up - Invalid guest password: ")); Serial.println(tmpPassword);
+            Serial.print(F("Hang up - Invalid guest password: ")); Serial.println(tmpBuffer);
           }
         }
 
@@ -330,7 +330,6 @@ void loop() {
             dtmfCmd[pCmd] = 0;
             Serial.println(F("*"));
             Serial.print(F("dtmfCmd :\"")); Serial.print(dtmfCmd); Serial.println(F("\""));
-            Serial.print(F("pCmd :")); Serial.println(pCmd);
             pCmd = 0;
             timeout = millis();
             if (strcmp(dtmfCmd, CMD1) == 0) {
@@ -399,7 +398,7 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(NEW_GUEST_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
-                  strcpy(Config.guestPassword, tmpPassword);
+                  strcpy(Config.guestPassword, tmpBuffer);
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
@@ -422,7 +421,7 @@ void loop() {
                 sim800StopPlay();
                 sim800PlayTrack(NEW_USER_PASSWORD);
                 if (enterPassword(enterPasswordPeriod)) {
-                  strcpy(Config.userPassword, tmpPassword);
+                  strcpy(Config.userPassword, tmpBuffer);
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
@@ -486,7 +485,6 @@ void loop() {
               continue;
             }
           }
-          Serial.println(timeout);
         }
         free(dtmfResp);
       }

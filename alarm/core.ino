@@ -44,14 +44,14 @@ bool checkWhiteList(char* msgPhone) {
 
 bool checkGuestPassword() {
   enterPassword(enterPasswordPeriod);
-  if (strcmp(tmpPassword, Config.guestPassword) != 0 ) return false;
+  if (strcmp(tmpBuffer, Config.guestPassword) != 0 ) return false;
   return true;
 }
 
 bool checkUserPassword() {
   enterPassword(enterPasswordPeriod);
-  Serial.println(tmpPassword);
-  if (strcmp(tmpPassword, Config.userPassword) != 0 ) return false;
+  Serial.println(tmpBuffer);
+  if (strcmp(tmpBuffer, Config.userPassword) != 0 ) return false;
   return true;
 }
 
@@ -61,7 +61,7 @@ bool enterPassword(unsigned long period) {
   char *atCmd = NULL;
   int i = 0;
   bool pinEnt = false;
-  memset((void*)tmpPassword, 0, sizeof(tmpPassword));
+  memset((void*)tmpBuffer, 0, sizeof(tmpBuffer));
 
   do {
     free(atCmd);
@@ -69,44 +69,44 @@ bool enterPassword(unsigned long period) {
     if (!atCmd) continue;
     delay(100);
     if (strncmp(atCmd, "+DTMF: 1", 8) == 0) {
-      tmpPassword[i++] = '1';
+      tmpBuffer[i++] = '1';
       Serial.print(F("1"));
     } else if (strncmp(atCmd, "+DTMF: 2", 8) == 0) {
-      tmpPassword[i++] = '2';
+      tmpBuffer[i++] = '2';
       Serial.print(F("2"));
     } else if (strncmp(atCmd, "+DTMF: 3", 8) == 0) {
-      tmpPassword[i++] = '3';
+      tmpBuffer[i++] = '3';
       Serial.print(F("3"));
     } else if (strncmp(atCmd, "+DTMF: 4", 8) == 0) {
-      tmpPassword[i++] = '4';
+      tmpBuffer[i++] = '4';
       Serial.print(F("4"));
     } else if (strncmp(atCmd, "+DTMF: 5", 8) == 0) {
-      tmpPassword[i++] = '5';
+      tmpBuffer[i++] = '5';
       Serial.print(F("5"));
     } else if (strncmp(atCmd, "+DTMF: 6", 8) == 0) {
-      tmpPassword[i++] = '6';
+      tmpBuffer[i++] = '6';
       Serial.print(F("6"));
     } else if (strncmp(atCmd, "+DTMF: 7", 8) == 0) {
-      tmpPassword[i++] = '7';
+      tmpBuffer[i++] = '7';
       Serial.print(F("7"));
     } else if (strncmp(atCmd, "+DTMF: 8", 8) == 0) {
-      tmpPassword[i++] = '8';
+      tmpBuffer[i++] = '8';
       Serial.print(F("8"));
     } else if (strncmp(atCmd, "+DTMF: 9", 8) == 0) {
-      tmpPassword[i++] = '9';
+      tmpBuffer[i++] = '9';
       Serial.print(F("9"));
     } else if (strncmp(atCmd, "+DTMF: 0", 8) == 0) {
-      tmpPassword[i++] = '0';
+      tmpBuffer[i++] = '0';
       Serial.print(F("0"));
     } else if (strncmp(atCmd, "+DTMF: #", 8) == 0) {
-      memset(tmpPassword, 0, sizeof(tmpPassword));
+      memset(tmpBuffer, 0, sizeof(tmpBuffer));
       Serial.print(F("#"));
       break;
     } else if (strstr(atCmd, "NO CARRIER")) {
       break;
     }
 
-    if (strlen(tmpPassword) == 4) {
+    if (strlen(tmpBuffer) == 4) {
       pinEnt = true;
     }
 

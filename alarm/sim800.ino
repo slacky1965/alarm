@@ -4,7 +4,6 @@ bool sim800Check() {
   if (!_response) simStatus = false;
   else {
     if (strstr(_response, "+CPAS: 0") || strstr(_response, "+CPAS: 3") || strstr(_response, "+CPAS: 4")) {
-      //    if (_response.indexOf("+CPAS: 0", 1) > -1 || _response.indexOf("+CPAS: 3", 1) > -1 || _response.indexOf("+CPAS: 4", 1) > -1) {
       simStatus = true;
       simReset = 0;
     } else simStatus = false;
@@ -25,16 +24,13 @@ void sim800Init() {
 
   if (!sim800Check()) return;
 
-  unsigned int timeout = 3;
-  char at[12];
-
-  sim800WriteCmd("AT", timeout);
-  sim800WriteCmd("ATE0", timeout);                                  /* Echo mode off        */
-  sim800WriteCmd("AT+DDET=1", timeout);                             /* Set DTMF code        */
-  sim800WriteCmd("AT+CLIP=1", timeout);                             /* Set Caller ID        */
-  sprintf(at, "AT+CMIC=0,%d", MIC_VOLUME);
-  sim800WriteCmd(at, timeout);                                      /* Set volume Mic input */
-  sim800WriteCmd("AT+CMGF=1;&W", timeout);                          /* Set TextMode for SMS */
+  sim800WriteCmd("AT", DEFAULT_TIMEOUT);
+  sim800WriteCmd("ATE0", DEFAULT_TIMEOUT);                                  /* Echo mode off        */
+  sim800WriteCmd("AT+DDET=1", DEFAULT_TIMEOUT);                             /* Set DTMF code        */
+  sim800WriteCmd("AT+CLIP=1", DEFAULT_TIMEOUT);                             /* Set Caller ID        */
+  sprintf(tmpBuffer, "AT+CMIC=0,%d", MIC_VOLUME);
+  sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);                                      /* Set volume Mic input */
+  sim800WriteCmd("AT+CMGF=1;&W", DEFAULT_TIMEOUT);                          /* Set TextMode for SMS */
 
   /* Delete all SMS after power on of system */
   if (firstStart) {
@@ -74,7 +70,9 @@ char* sim800WaitResponse(unsigned long timeout) {
         p = (char*)realloc(_response, DEFAULT_BUFFER_SIZE + pCount);
         if (!p) {
           Serial.println(F("Error realloc in sim800WaitResponse()"));
-          while (1);
+          free(_response);
+          _response = NULL;
+          return NULL;
         }
       }
       _response = p;
@@ -107,7 +105,7 @@ char* sim800ReadDTMF() {
 
   memset((void*)cmd, 0, DEFAULT_BUFFER_SIZE);
 
-  for (i = 0; SIM800.available() && i < DEFAULT_BUFFER_SIZE; i++) {
+  for (i = 0; i < DEFAULT_BUFFER_SIZE && SIM800.available(); i++) {
     in = SIM800.read();
     if (i == 0 && ((char)in == '\r' || (char)in == '\n' || (char)in == ' ')) {
       i--;
@@ -120,7 +118,6 @@ char* sim800ReadDTMF() {
     free(cmd);
     cmd = NULL;
   }
-  //  Serial.print(F("DTMF : \"")); Serial.print(cmd); Serial.println(F("\""));
   return cmd;
 }
 
@@ -135,25 +132,25 @@ void sim800Reset() {
 
 void sim800DeleteSMS(_deleteSMS DEL) {
 
-  char cmd[32], *at = "AT+CMGDA=\"DEL ";
+  char *at = "AT+CMGDA=\"DEL ";
 
   switch (DEL) {
     case ALL:
-      sprintf(cmd, "%s%s", at, "ALL\"");
+      sprintf(tmpBuffer, "%s%s", at, "ALL\"");
       break;
     case READ:
-      sprintf(cmd, "%s%s", at, "READ\"");
+      sprintf(tmpBuffer, "%s%s", at, "READ\"");
       break;
     case SENT:
-      sprintf(cmd, "%s%s", at, "SENT\"");
+      sprintf(tmpBuffer, "%s%s", at, "SENT\"");
       break;
     default:
-      cmd[0] = 0;
+      tmpBuffer[0] = 0;
       break;
   }
 
-  if (cmd[0] != 0) {
-    sim800WriteCmd(cmd, DEFAULT_TIMEOUT);
+  if (tmpBuffer[0] != 0) {
+    sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);
   }
 }
 
@@ -163,8 +160,8 @@ void sim800HangUp() {
 }
 
 void sim800PlayTrack(_track track) {
-  strcpy_P(fileName, (char*)pgm_read_word(&(msgName[track])));
-  sim800WriteCmd(fileName, 0);
+  strcpy_P(tmpBuffer, (char*)pgm_read_word(&(msgName[track])));
+  sim800WriteCmd(tmpBuffer, 0);
   delay(DEFAULT_DELAY_PLAY_TRACK * 1000);
 }
 
@@ -190,27 +187,22 @@ char* sim800IdxUnreadSMS() {
 }
 
 char* sim800ReadSMS(int msgIndex) {
-  char at[16];
-
-  sprintf(at, "AT+CMGR=%u,1", msgIndex);
-  Serial.print(F("sim800ReadSMS - \"")); Serial.print(at); Serial.println("\"");
-  char *resp = sim800WriteCmd(at, DEFAULT_TIMEOUT);
+  sprintf(tmpBuffer, "AT+CMGR=%u,1", msgIndex);
+  /*Serial.print(F("sim800ReadSMS - \"")); Serial.print(tmpBuffer); Serial.println("\"");*/
+  char *resp = sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);
 
   return resp;
 }
 
 void sim800SetReadSMS(int msgIndex) {
-  char at[10];
+  sprintf(tmpBuffer, "AT+CMGR=%u", msgIndex);
 
-  sprintf(at, "AT+CMGR=%u", msgIndex);
-
-  sim800WriteCmd(at, DEFAULT_TIMEOUT);
+  sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);
 }
 
 void sim800RequestBalance() {
-  char at[DEFAULT_BUFFER_SIZE];
-  sprintf(at, "AT+CUSD=1,\"%s\"", BALANCE);
-  sim800WriteCmd(at, DEFAULT_TIMEOUT);
+  sprintf(tmpBuffer, "AT+CUSD=1,\"%s\"", BALANCE);
+  sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);
 }
 
 void sim800Answer() {
@@ -306,13 +298,13 @@ void sim800ParseSMS(char* msg) {                                   // Парси
     }
   }
 
-  if (strstr(msgBody, CMD1)) {
+  if (strncmp(msgBody, CMD1, strlen(CMD1)) == 0) {
     Serial.print(F("Check command \"")); Serial.print(CMD1); Serial.println(F("\""));
     if (!alarmOn) alarmOn = true;
-  } else if (strstr(msgBody, CMD0)) {
+  } else if (strncmp(msgBody, CMD0, strlen(CMD0)) == 0) {
     Serial.print(F("Check command \"")); Serial.print(CMD0); Serial.println(F("\""));
     if (alarmOn) alarmOn = false;
-  } else if (strstr(msgBody, CMD2)) {
+  } else if (strncmp(msgBody, CMD2, strlen(CMD2)) == 0) {
     Serial.print(F("Check command \"")); Serial.print(CMD2); Serial.println(F("\""));
     memset(newPhone, 0, sizeof(newPhone));
     p = strstr(msgBody, ":");
@@ -343,11 +335,11 @@ void sim800ParseSMS(char* msg) {                                   // Парси
         sim800SendSMS(msgPhone, sms);
       }
     }
-  } else if (strstr(msgBody, CMD100)) {
+  } else if (strncmp(msgBody, CMD100, strlen(CMD100)) == 0) {
     Serial.print(F("Check command \"")); Serial.print(CMD100); Serial.println(F("\""));
     requestBalance = true;
     strcpy(CallID, msgPhone);
-  } else if (strstr(msgBody, CMD8)) {
+  } else if (strncmp(msgBody, CMD8, strlen(CMD8)) == 0) {
     Serial.print(F("Check command \"")); Serial.print(CMD8); Serial.println(F("\""));
   }
 
