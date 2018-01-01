@@ -147,7 +147,7 @@ void loop() {
       char *pBegin, *pEnd;
       while (1) {
         _response = sim800IdxUnreadSMS();                           /* Send request for unread SMS  */
-        pBegin = strstr(_response, "+CMGL: ");
+        pBegin = strstr(_response, "+CMGL: ");                      /* Get index first unread SMS   */
         int msgIndex = 0;
         if (pBegin) {
           pEnd = strstr(pBegin, ",\"REC UNREAD\"");
@@ -162,7 +162,7 @@ void loop() {
         if (msgIndex) {
           int i;
           for (i = 0; i < 10; i++) {
-            _response = sim800ReadSMS(msgIndex);
+            _response = sim800ReadSMS(msgIndex);                    /* Read text SMS                */
             strtrim(_response);
             pBegin = _response + (strlen(_response) - 5);
             if (strstr(pBegin, "OK")) {
@@ -322,7 +322,6 @@ void loop() {
           if (p || (timeout + updatePeriod) < millis()) {
             sim800HangUp();
             onLine = false;;
-//            break;
           }
           if (makeCmd) {
             if (strcmp(dtmfCmd, CMD1) == 0) {
