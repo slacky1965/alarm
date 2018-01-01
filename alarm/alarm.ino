@@ -56,7 +56,8 @@ const char msg12[] PROGMEM = "AT+CREC=4,\"C:\\User\\13.amr\",0,80";
 
 const char* const msgName[] PROGMEM = {msg0, msg1, msg2, msg3, msg4, msg5, msg6, msg7, msg8, msg9, msg10, msg11, msg12};
 char tmpBuffer[32];
-//strcpy_P(fileName, (char*)pgm_read_word(&(fileNameT[_track])));
+/* Example copy to tmpBuffer from PROGMEM msgName
+  strcpy_P(tmpBuffer, (char*)pgm_read_word(&(msgName[_track]))); */
 
 enum  _track {
   ENTER_PASSWORD = 0,
@@ -190,24 +191,31 @@ void loop() {
       }
     }
 
+    /* Reuest balance */
+    if (requestBalance) {
+      sim800RequestBalance();
+      requestBalance = false;
+      lastUpdate = millis();
+    }
+
     if (SIM800.available())   {
       _response = sim800WaitResponse(DEFAULT_TIMEOUT);
       Serial.println(_response);
 
       /* Detected USSD answer */
       if (strstr(_response, "+CUSD:")) {
-        Serial.println(F("Запрос баланса"));
+        Serial.println(F("Request of balance"));
         char *pBegin, *pEnd;
         pBegin = strpbrk(_response, "\"");
         if (pBegin) {
           pBegin++;
           pEnd = strpbrk(pBegin, "\"");
-          char msgBalance[DEFAULT_BUFFER_SIZE];
-          memset((void*)msgBalance, 0, DEFAULT_BUFFER_SIZE);
-          strncpy(msgBalance, pBegin, (size_t)(pEnd - pBegin));
-          Serial.print(F("USSD: ")); Serial.println(msgBalance);
+          
+          memset((void*)tmpBuffer, 0, sizeof(tmpBuffer));
+          strncpy(tmpBuffer, pBegin, pEnd - pBegin);
+          Serial.print(F("USSD: ")); Serial.println(tmpBuffer);
           /* Send info about balance */
-          sim800SendSMS(CallID, msgBalance);
+          sim800SendSMS(CallID, tmpBuffer);
           /* Up flag for delete sent SMS */
           deleteSentSMS = true;
         }
@@ -277,7 +285,7 @@ void loop() {
         bool makeCmd = false;
         unsigned long timeout = millis(), timeoutDTMF = millis();
         unsigned int pCmd = 0;
-        char *p, *dtmfResp = NULL;
+        char *p, *onlineResp = NULL;
         char dtmfCmd[DTMF_BUFFER_SIZE];
         memset(dtmfCmd, 0, DTMF_BUFFER_SIZE);
         delay(1000);
@@ -286,9 +294,9 @@ void loop() {
         /* Reading DTMF of code */
         while (onLine) {
           makeCmd = false;
-          free(dtmfResp);
-          dtmfResp = sim800ReadDTMF();
-          p = strstr(dtmfResp, DTMF);
+          free(onlineResp);
+          onlineResp = sim800ReadOnLine();
+          p = strstr(onlineResp, DTMF);
           if (p) {
             timeout = millis();
             timeoutDTMF = millis();
@@ -310,7 +318,7 @@ void loop() {
               timeoutDTMF = millis();
             } else pCmd++;
           }
-          p = strstr(dtmfResp, NO_CARRIER);
+          p = strstr(onlineResp, NO_CARRIER);
           if (p || (timeout + updatePeriod) < millis()) {
             sim800HangUp();
             onLine = false;;
@@ -349,7 +357,6 @@ void loop() {
               sim800HangUp();
               requestBalance = true;
               timeout = 0;
-              //break;
             } else if (strcmp(dtmfCmd, CMD333) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD333); Serial.println(F("\""));
               Serial.println(F("Enter password"));
@@ -363,7 +370,6 @@ void loop() {
                 delay(2000);
                 sim800Reset();
                 timeout = 0;
-                //break;
               } else {
                 Serial.println(F("Invalid user password!!!"));
                 sim800StopPlay();
@@ -456,22 +462,14 @@ void loop() {
             }
           }
         }
-        free(dtmfResp);
+        free(onlineResp);
       }
 
       /* New message has been received */
       if (strstr(_response, "+CMTI:")) {
-        //      if (_response.indexOf("+CMTI:") > -1) {
         lastUpdate = 0;
       }
 
-    }
-
-    /* Reuest balance */
-    if (requestBalance) {
-      sim800RequestBalance();
-      requestBalance = false;
-      lastUpdate = millis();
     }
 
     /* Delete all sent SMS */

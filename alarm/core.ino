@@ -63,7 +63,7 @@ bool enterPassword(unsigned long period) {
 
   do {
     free(atCmd);
-    atCmd = sim800ReadDTMF();
+    atCmd = sim800ReadOnLine();
     if (!atCmd) continue;
     delay(100);
     p = strstr(atCmd, DTMF);

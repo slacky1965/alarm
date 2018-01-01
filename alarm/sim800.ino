@@ -93,12 +93,12 @@ char* sim800WaitResponse(unsigned long timeout) {
   return p;
 }
 
-char* sim800ReadDTMF() {
-  int in;
-  unsigned int i;
-  char *cmd = (char*)malloc(DEFAULT_BUFFER_SIZE);
+char* sim800ReadOnLine() {
+  int i;
+  char in, *cmd = (char*)malloc(DEFAULT_BUFFER_SIZE);
+  
   if (!cmd) {
-    Serial.println(F("Error mallac in sim800ReadDTMF()"));
+    Serial.println(F("Error malloc in sim800ReadDTMF()"));
     cmd = NULL;
     return cmd;
   }
@@ -107,11 +107,11 @@ char* sim800ReadDTMF() {
 
   for (i = 0; i < DEFAULT_BUFFER_SIZE && SIM800.available(); i++) {
     in = SIM800.read();
-    if (i == 0 && ((char)in == '\r' || (char)in == '\n' || (char)in == ' ')) {
+    if (i == 0 && (in == '\r' || in == '\n' || in == ' ')) {
       i--;
       continue;
     }
-    cmd[i] = char(in);
+    cmd[i] = in;
     delay(5);
   }
   if (i == 0) {
@@ -255,6 +255,7 @@ void sim800ParseSMS(char* msg) {                                   // Парси
               p += 3;
               pp = strstr(p, "\",\"");
               if (pp) {
+                memset((void*)msgPhone, 0, sizeof(msgPhone));
                 strncpy(msgPhone, p, pp - p);
                 msgPhone[12] = 0;
                 Serial.print(F("Phone: ")); Serial.println(msgPhone);
@@ -279,19 +280,21 @@ void sim800ParseSMS(char* msg) {                                   // Парси
     Serial.println(F("The phone from the whitelist"));
     phoneWhiteList = true;
   } else {
-    Serial.println(F("Unknown phonenumber"));
+    Serial.println(F("Unknown phone number"));
     p = strstr(msgBody, ":");
     if (p) {
       strncpy(password, p + 1, 4);
       password[4] = 0;
       Serial.print(F("password: ")); Serial.println(password);
-      if (strcmp(password, Config.guestPassword) != 0) { 
+      if (strcmp(password, Config.guestPassword) != 0) {
+        Serial.println(F("Invalid password"));
         free(msgHeader);
         free(msgBody);
         return;
       }
     } else {
-      /* phone not present in white list and no password */
+      /* Phone not present in white list and no password */
+      Serial.println(F("Unknown phone number and no password"));
       free(msgHeader);
       free(msgBody);
       return;
@@ -309,30 +312,31 @@ void sim800ParseSMS(char* msg) {                                   // Парси
     memset(newPhone, 0, sizeof(newPhone));
     p = strstr(msgBody, ":");
     if (p && strlen(msgBody) > 3) {
-      poz = (p+1)[0] - '0' ;
+      poz = *(p+1) - '0' ;
 
       if (poz == 2 || poz == 3) {
-        char sms[32];
         p = strstr(p + 1, ":");
         if (p) {
           p++;
           /* Invalid phone format */
           if (!checkPhoneFormat(p)) {
-            sprintf(sms, "Invalid phone format \"%s\"", p);
-            sim800SendSMS(msgPhone, sms);
+            sprintf(tmpBuffer, "Invalid phone format \"%s\"", p);
+            sim800SendSMS(msgPhone, tmpBuffer);
+            free(msgHeader);
+            free(msgBody);
             return;
           }
           strcpy(newPhone, p);
         }
         if (strlen(newPhone)) {
           strcpy(Config.phoneWhiteList[poz - 1], newPhone);
-          sprintf(sms, "Added phone %d %s", poz, newPhone);
+          sprintf(tmpBuffer, "Added phone %d %s", poz, newPhone);
         } else {
-          sprintf(sms, "Delete phone %d %s", poz, Config.phoneWhiteList[poz - 1]);
+          sprintf(tmpBuffer, "Delete phone %d %s", poz, Config.phoneWhiteList[poz - 1]);
           memset((void*)Config.phoneWhiteList[poz - 1], 0, sizeof(Config.phoneWhiteList[poz - 1]));
         }
         saveConfig();
-        sim800SendSMS(msgPhone, sms);
+        sim800SendSMS(msgPhone, tmpBuffer);
       }
     }
   } else if (strncmp(msgBody, CMD100, strlen(CMD100)) == 0) {
