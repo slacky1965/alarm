@@ -112,7 +112,7 @@ char* sim800ReadDTMF() {
       continue;
     }
     cmd[i] = char(in);
-    delay(2);
+    delay(5);
   }
   if (i == 0) {
     free(cmd);

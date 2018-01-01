@@ -12,7 +12,9 @@
 #define PIN_POWER_ON  A0                        /* Pin for conrol ext power */
 #define PIN_BATTERY   A1                        /* Pin for control battery  */
 
-#define PASSWORD "1234"                         /* Default user and guest pin in config, when first start */
+#define PASSWORD    "1234"                      /* Default user and guest pin in config, when first start */
+#define DTMF        "+DTMF:"
+#define NO_CARRIER  "NO CARRIER"
 
 #define CMD0    "0*"                            /* Alarm Off                */
 #define CMD1    "1*"                            /* Alarm On                 */
@@ -272,9 +274,10 @@ void loop() {
         }
 
         bool onLine = true;
+        bool makeCmd = false;
         unsigned long timeout = millis(), timeoutDTMF = millis();
         unsigned int pCmd = 0;
-        char *dtmfResp = NULL;
+        char *p, *dtmfResp = NULL;
         char dtmfCmd[DTMF_BUFFER_SIZE];
         memset(dtmfCmd, 0, DTMF_BUFFER_SIZE);
         delay(1000);
@@ -282,56 +285,38 @@ void loop() {
 
         /* Reading DTMF of code */
         while (onLine) {
+          makeCmd = false;
           free(dtmfResp);
           dtmfResp = sim800ReadDTMF();
-          delay(100);
-          if (strncmp(dtmfResp, "+DTMF: 1", 8) == 0) {
-            dtmfCmd[pCmd++] = '1';
-            timeoutDTMF = millis();
-            Serial.print(F("1"));
-          } else if (strncmp(dtmfResp, "+DTMF: 2", 8) == 0) {
-            dtmfCmd[pCmd++] = '2';
-            timeoutDTMF = millis();
-            Serial.print(F("2"));
-          } else if (strncmp(dtmfResp, "+DTMF: 3", 8) == 0) {
-            dtmfCmd[pCmd++] = '3';
-            timeoutDTMF = millis();
-            Serial.print(F("3"));
-          } else if (strncmp(dtmfResp, "+DTMF: 4", 8) == 0) {
-            dtmfCmd[pCmd++] = '4';
-            timeoutDTMF = millis();
-            Serial.print(F("4"));
-          } else if (strncmp(dtmfResp, "+DTMF: 5", 8) == 0) {
-            dtmfCmd[pCmd++] = '5';
-            timeoutDTMF = millis();
-            Serial.print(F("5"));
-          } else if (strncmp(dtmfResp, "+DTMF: 6", 8) == 0) {
-            dtmfCmd[pCmd++] = '6';
-            timeoutDTMF = millis();
-            Serial.print(F("6"));
-          } else if (strncmp(dtmfResp, "+DTMF: 7", 8) == 0) {
-            dtmfCmd[pCmd++] = '7';
-            timeoutDTMF = millis();
-            Serial.print(F("7"));
-          } else if (strncmp(dtmfResp, "+DTMF: 8", 8) == 0) {
-            dtmfCmd[pCmd++] = '8';
-            timeoutDTMF = millis();
-            Serial.print(F("8"));
-          } else if (strncmp(dtmfResp, "+DTMF: 9", 8) == 0) {
-            dtmfCmd[pCmd++] = '9';
-            timeoutDTMF = millis();
-            Serial.print(F("9"));
-          } else if (strncmp(dtmfResp, "+DTMF: 0", 8) == 0) {
-            dtmfCmd[pCmd++] = '0';
-            timeoutDTMF = millis();
-            Serial.print(F("0"));
-          } else if (strncmp(dtmfResp, "+DTMF: *", 8) == 0) {
-            dtmfCmd[pCmd++] = '*';
-            dtmfCmd[pCmd] = 0;
-            Serial.println(F("*"));
-            Serial.print(F("dtmfCmd :\"")); Serial.print(dtmfCmd); Serial.println(F("\""));
-            pCmd = 0;
+          p = strstr(dtmfResp, DTMF);
+          if (p) {
             timeout = millis();
+            timeoutDTMF = millis();
+            dtmfCmd[pCmd] = *(p + 7);
+            Serial.print(dtmfCmd[pCmd]);
+            if (dtmfCmd[pCmd] == '*') {
+              dtmfCmd[pCmd + 1] = 0;
+              Serial.println();
+              makeCmd = true;
+              pCmd = 0;
+            } else if (dtmfCmd[pCmd] == '#') {
+              sim800StopPlay();
+              sim800PlayTrack(WELCOME);
+              Serial.println("#");
+              Serial.println(F("\nBegin now"));
+              pCmd = 0;
+              memset(dtmfCmd, 0, sizeof(dtmfCmd));
+              timeout = millis();
+              timeoutDTMF = millis();
+            } else pCmd++;
+          }
+          p = strstr(dtmfResp, NO_CARRIER);
+          if (p || (timeout + updatePeriod) < millis()) {
+            sim800HangUp();
+            onLine = false;;
+            break;
+          }
+          if (makeCmd) {
             if (strcmp(dtmfCmd, CMD1) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD1); Serial.println(F("\""));
               if (!alarmOn) {
@@ -390,7 +375,7 @@ void loop() {
               sim800PlayTrack(HELP);
             } else if (strcmp(dtmfCmd, CMD6) == 0) {
               Serial.print(F("Check command \"")); Serial.print(CMD6); Serial.println(F("\""));
-              Serial.println("Введите пароль");
+              Serial.println("Enter password");
               sim800StopPlay();
               sim800PlayTrack(ENTER_PASSWORD);
               if (checkUserPassword()) {
@@ -402,9 +387,9 @@ void loop() {
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
-                  char msg[32];
-                  sprintf(msg, "New guest password: %s", Config.guestPassword);
-                  sim800SendSMS(CallID, msg);
+                  /* Use buffer dtmfCmd for message text */
+                  sprintf(dtmfCmd, "New guest password: %s", Config.guestPassword);
+                  sim800SendSMS(CallID, dtmfCmd);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
@@ -425,9 +410,9 @@ void loop() {
                   saveConfig();
                   sim800StopPlay();
                   sim800PlayTrack(CMD_EXECUTED);
-                  char msg[32];
-                  sprintf(msg, "New user password: %s", Config.userPassword);
-                  sim800SendSMS(CallID, msg);
+                  /* Use buffer dtmfCmd for message text */
+                  sprintf(dtmfCmd, "New user password: %s", Config.userPassword);
+                  sim800SendSMS(CallID, dtmfCmd);
                 }
               } else {
                 Serial.println(F("Invalid user password!!!"));
@@ -460,21 +445,6 @@ void loop() {
             }
             pCmd = 0;
             memset(dtmfCmd, 0, sizeof(dtmfCmd));
-            timeoutDTMF = millis();
-            Serial.println();
-          } else if (strncmp(dtmfResp, "+DTMF: #", 8) == 0) {
-            pCmd = 0;
-            sim800StopPlay();
-            sim800PlayTrack(WELCOME);
-            Serial.println("#");
-            Serial.println(F("\nBegin now"));
-            pCmd = 0;
-            memset(dtmfCmd, 0, sizeof(dtmfCmd));
-            timeout = millis();
-            timeoutDTMF = millis();
-          } else if (strstr(dtmfResp, "NO CARRIER") || (timeout + updatePeriod) < millis()) {
-            sim800HangUp();
-            break;
           } else {
             /* If the timeout between the enter DTMF code more than 10 seconds, to reset the input */
             if (!strpbrk(dtmfCmd, "*") && strlen(dtmfCmd) > 0 && (millis() - timeoutDTMF) > 10000) {
