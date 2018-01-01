@@ -29,7 +29,7 @@ void sim800Init() {
   sim800WriteCmd("AT+DDET=1", DEFAULT_TIMEOUT);                             /* Set DTMF code        */
   sim800WriteCmd("AT+CLIP=1", DEFAULT_TIMEOUT);                             /* Set Caller ID        */
   sprintf(tmpBuffer, "AT+CMIC=0,%d", MIC_VOLUME);
-  sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);                                      /* Set volume Mic input */
+  sim800WriteCmd(tmpBuffer, DEFAULT_TIMEOUT);                               /* Set volume Mic input */
   sim800WriteCmd("AT+CMGF=1;&W", DEFAULT_TIMEOUT);                          /* Set TextMode for SMS */
 
   /* Delete all SMS after power on of system */
@@ -56,12 +56,12 @@ char* sim800WriteCmd(const char *cmd, unsigned long waiting) {
 
 char* sim800WaitResponse(unsigned long timeout) {
   unsigned int pCount;
-  char inChar, *p = NULL;
+  char in, *p = NULL;
 
   unsigned long timeOld = millis();
 
   while (!SIM800.available() && !(millis() > timeOld + timeout * 1000)) {
-    delay(13);
+    delay(10);
   }
 
   if (SIM800.available()) {
@@ -76,12 +76,12 @@ char* sim800WaitResponse(unsigned long timeout) {
         }
       }
       _response = p;
-      inChar = SIM800.read();
-      if (pCount == 0 && (inChar == '\r' || inChar == '\n' || inChar == ' ')) {
+      in = SIM800.read();
+      if (pCount == 0 && (in == '\r' || in == '\n' || in == ' ')) {
         pCount--;
         continue;
       }
-      p[pCount] = inChar;
+      p[pCount] = in;
       delay(1);
     }
     p[pCount] = 0;

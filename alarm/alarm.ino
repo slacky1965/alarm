@@ -307,7 +307,7 @@ void loop() {
               Serial.println();
               makeCmd = true;
               pCmd = 0;
-            } else if (dtmfCmd[pCmd] == '#') {
+            } else if (dtmfCmd[pCmd] == '#' || pCmd >= DTMF_BUFFER_SIZE-1) {
               sim800StopPlay();
               sim800PlayTrack(WELCOME);
               Serial.println("#");
@@ -322,7 +322,7 @@ void loop() {
           if (p || (timeout + updatePeriod) < millis()) {
             sim800HangUp();
             onLine = false;;
-            break;
+//            break;
           }
           if (makeCmd) {
             if (strcmp(dtmfCmd, CMD1) == 0) {
