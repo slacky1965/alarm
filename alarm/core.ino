@@ -80,11 +80,11 @@ bool enterPassword(unsigned long period) {
     if (p) {
       break;
     }
-    if (strlen(tmpBuffer) == 4) {
+    if (i == 4) {
       pinEnt = true;
     }
 
-  } while (!pinEnt && i < 5 && (timeout + period) > millis());
+  } while (!pinEnt && i < 5 && (millis() - timeout) < period);
 
   free(atCmd);
 

@@ -128,19 +128,19 @@ bool alarmOn        = false;
 void loop() {
 
   /* Init modem */
-  if (!simStatus && lastCheckSimStatus + updateSimStatus < millis()) {
+  if (!simStatus && (millis() - lastCheckSimStatus) > updateSimStatus) {
     sim800Init();
     lastCheckSimStatus = millis();
   }
 
   /* Check status modem one time per minute */
-  if (simStatus && lastCheckSIM + updatePeriod < millis()) {
+  if (simStatus && (millis() - lastCheckSIM) > updatePeriod) {
     lastCheckSIM = millis();
     sim800Check();
   }
 
   if (simStatus) {
-    if (lastUpdate + updatePeriod < millis() ) {
+    if ((millis() - lastUpdate) > updatePeriod) {
       Serial.println();
       Serial.print(F("userPassword: ")); Serial.println(Config.userPassword);
       Serial.print(F("guestPassword: ")); Serial.println(Config.guestPassword);
@@ -319,7 +319,7 @@ void loop() {
             } else pCmd++;
           }
           p = strstr(onlineResp, NO_CARRIER);
-          if (p || (timeout + updatePeriod) < millis()) {
+          if (p || (millis() - timeout) > updatePeriod) {
             sim800HangUp();
             onLine = false;;
           }

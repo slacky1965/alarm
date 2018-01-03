@@ -60,7 +60,7 @@ char* sim800WaitResponse(unsigned long timeout) {
 
   unsigned long timeOld = millis();
 
-  while (!SIM800.available() && !(millis() > timeOld + timeout * 1000)) {
+  while (!SIM800.available() && (millis() - timeOld) < (timeout * 1000)) {
     delay(10);
   }
 
